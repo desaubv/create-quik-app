@@ -1,5 +1,5 @@
 const { logger } = require("@desaubv/quik");
-const config = require("./config.json");
+const config = require("./config.js");
 
 logger.setConfig({
     ...config.logger,

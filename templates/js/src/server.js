@@ -3,11 +3,49 @@ const Path = require("path")
 
 const { Server, logger } = require("@desaubv/quik");
 
-const config = require("./config.json");
+const config = require("./config.js");
 require("./logger");
 
 const server = Server();
 const validExtensions = [".js", ".ts"];
+
+/* Auto Load Middlewares */
+try {
+    const basePath = "./src/middlewares";
+    const middlewaresMap = fs.readdirSync(basePath);
+
+    middlewaresMap.forEach((route) => {
+        const filePath = Path.resolve(basePath, route);
+        const ext = Path.extname(filePath);
+
+        if (!validExtensions.includes(ext)) {
+            return;
+        }
+
+        const loadedModule = require(filePath);
+        const middleware = loadedModule.default ?? loadedModule;
+
+        if (typeof middleware !== "function") {
+            throw new TypeError(
+                `Middleware "${route}" does not export a function`
+            );
+        }
+
+        server.addMiddleware(middleware);
+    });
+} catch (err) {
+    switch (err.code) {
+        case "ENOENT":
+            break;
+
+        case "EACCES":
+            logger.error("[ Permission denied ]:", err.message);
+            break;
+
+        default:
+            logger.error("[ Error loading MIDDLEWARES ]:", err.message);
+    }
+}
 
 /* Auto Load routes */
 let routesMap = {};
@@ -41,7 +79,7 @@ for (const key in routesMap) {
 
     try {
         server.addRoute(key, router);
-    }catch(err) {
+    } catch (err) {
         logger.error("[ Error adding router ]", err.message);
     }
 }
@@ -51,7 +89,7 @@ let cronMap = [];
 try {
     const basePath = "./src/cron";
     cronMap = loadCronDir(basePath);
-    
+
 } catch (err) {
     if (err instanceof Error && "code" in err) {
         switch (err.code) {
@@ -73,23 +111,28 @@ try {
 
 for (const i in cronMap) {
     const cron = cronMap[i];
-    
+
     try {
         server.addCron(cron);
-    }catch(err) {
+    } catch (err) {
         logger.error("[ Error adding cron ]", err.message);
     }
 }
 
 /* Static html */
 const staticPath = config.server.staticPath;
-if(staticPath){
+if (staticPath) {
     server.addStaticDir(staticPath);
 }
 
 // Load ws
-if(fs.existsSync(Path.resolve("./src/socket.js"))){
-    server.addSocket(require("./socket"));
+if (fs.existsSync(Path.resolve("./src/ws.js"))) {
+    server.useWebSocket(require("./ws_"));
+}
+
+// Load socket.io
+if (fs.existsSync(Path.resolve("./src/socket.js"))) {
+    server.useSocketIO(require("./socket"));
 }
 
 // Load config
@@ -124,10 +167,10 @@ function loadRouteDir(basePath, base = "") {
         if (!validExtensions.includes(ext)) {
             return
         }
-        
-        const key = basename.toLocaleLowerCase() == "default" 
-                        ? base + "" 
-                        : base + basename;
+
+        const key = basename.toLocaleLowerCase() == "default"
+            ? base + ""
+            : base + basename;
         routesMap[key] = require(path);
     });
 
@@ -152,7 +195,7 @@ function loadCronDir(basePath) {
         if (!validExtensions.includes(ext)) {
             return
         }
-        
+
         cronMap.push(require(path));
     });
 
